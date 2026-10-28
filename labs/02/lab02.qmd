@@ -1,0 +1,354 @@
+---
+title: "Lab 2: Advanced nix"
+subtitle: "Big Data Algorithms"
+author: "Muhammad Khalaila"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    number-sections: false
+    code-copy: true
+    embed-resources: true
+execute:
+  eval: false
+---
+
+This lab has exercises that reinforce what we learned in Lecture 2 (`lectures/lec02_linux_advanced.qmd`). Everything is done at the **terminal** (not by clicking in a file browser).
+
+::: {.callout-warning}
+## Ground rules
+* Run every command yourself. Many answers depend on what you see on your own machine.
+* Leave the "#TODO text [question text] text" line and start a new line underneath and write your answers on that new line 
+:::
+
+# Part 0: Setup
+
+I'm assuming your private github repository for this class (as set up in `setup/01_linux_git_github_setup.qmd`) is in the following location. If not, please edit the location below:
+
+```bash
+export my_52002_repo="$HOME/courses/HUJI_52002_Fall_2026"
+```
+
+Create a directory for this assignment, download this file and move it into `$my_52002_repo/labs/02/`. As in Lab 1, commit / push after chunks of work; the timestamp of your final push is your submission date.
+
+Create a scratch folder for this lab and move into it (the `scratch` line you added to `.gitignore` in Lab 1 keeps it out of git):
+
+```bash
+mkdir -p $my_52002_repo/labs/02/scratch
+cd $my_52002_repo/labs/02/scratch
+```
+
+# Part 1: Broken pipes and signals
+
+This loop prints one line per second for 5 seconds. Time it when only its first line is wanted:
+
+```bash
+time (for i in 1 2 3 4 5; do echo "line $i"; sleep 1; done | head -n 1)
+```
+
+#TODO [the loop needs 5 seconds to finish, but the whole command takes about 1 second. What happened to the loop, and when exactly did it happen? <1pts>]
+head reads the first line and exits. The loop then sleeps for one second. When it tries to print the second line, the pipe has no reader, so the loop receives SIGPIPE and terminates.
+#TODO [why do you think it took slightly more than one second? <1pts>]
+The command took slightly more than one second because starting processes and executing commands adds a small overhead to the one-second sleep.
+
+`yes` prints `y` forever (see `man yes`). Run:
+
+```bash
+yes | head -n 3
+```
+
+Now verify that `yes` isn't running on the machine:
+
+```bash
+#TODO [command to verify <1pts>]
+pgrep -x yes
+```
+
+#TODO [why does `yes | head -n 3` finish at all, if `yes` never stops on its own? <1pts>]
+head exits after reading three lines. When yes tries to write again, the pipe has no reader, so yes receives SIGPIPE and terminates.
+Run:
+
+```bash
+yes | sort | head
+```
+
+Open a new terminal. Verify that `yes` is still running on the machine:
+
+```bash
+#TODO [command to verify <1pts>]
+pgrep -x yes
+```
+
+#TODO [why does `yes | sort | head` continue where `yes | head` stopped? <1pts>]
+sort keeps reading input from yes and waits for the input to end before producing sorted output. Since yes produces endless input, sort keeps reading, head keeps waiting, and the pipeline continues running.
+
+Close the second terminal. Return to the first and use "CTRL+C" to stop the `yes` program.
+
+# Part 2: Counting and saving with `cut`, `sort`, `uniq` and `tee`
+
+Copy the covid 2020 report data from your lab 1 directory or use the following command redownload it (see lec01).
+
+```bash
+#TODO [command to copy covid.csv from last lab's scratch folder or the download command <1pts>]
+cp ../../../scratch/lec01/covid.csv .
+```
+
+**`cut`, `sort`, `uniq`, `tee`.**
+
+* (a) How many different states (and territories) are in the file? Be careful: the header line is not a state. Use `tail -n +2` which starts on the second line.
+* (b) Which five states have the most rows, and how many rows does each have?
+* (c) How many rows are there for each month of 2020? (The first seven characters of each line are `YYYY-MM`, and `cut` can work on *characters* as well as fields. The header line will show up as its own odd "month"; point it out in your answer.)
+
+```bash
+#TODO [command (a) <1pts>]
+tail -n +2 covid.csv | cut -d ',' -f 3 | sort | uniq | wc -l
+# Output: 55
+#TODO [command (b) <2pts>]
+tail -n +2 covid.csv | cut -d ',' -f 3 | sort | uniq -c | sort -nr | head -n 5
+# Output:
+# 67002 Texas
+# 45209 Georgia
+# 36886 Virginia
+# 32812 Kentucky
+# 31333 Missouri
+#TODO [command (c) <1pts>]
+cut -c 1-7 covid.csv | sort | uniq -c
+# Output:
+# 39 2020-01
+# 359 2020-02
+# 23482 2020-03
+# 79990 2020-04
+# 92980 2020-05
+# 93379 2020-06
+# 98927 2020-07
+# 99985 2020-08
+# 97106 2020-09
+# 100547 2020-10
+# 97340 2020-11
+# 100603 2020-12
+# 1 date,co
+# date,co comes from the header row and is not a real month.
+```
+
+**`tee`.**
+
+Run:
+
+```bash
+grep -E ',(Texas|Ohio),' covid.csv | tee tx_oh.csv | wc -l
+```
+
+#TODO [what does `tee` do, and where does the output of each command go? <1pts>]
+grep selects the Texas and Ohio rows and sends them to tee. tee writes these rows to tx_oh.csv and also passes them to wc -l. wc -l counts the rows and prints 93176 in the terminal.
+
+# Part 3: Hundreds of files
+
+Real data often comes as hundreds or thousands of small files (one per day, per sensor, per user) rather than one big file. In this part you make such a folder yourself and then work with it using one-liners. Split `covid.csv` into one file per day:
+
+```bash
+cd $my_52002_repo/labs/02/scratch
+mkdir days
+#TODO [one command that splits the 2020 covid dataset into one CSV file per day and puts that file in the days/ folder <2pts>]
+awk -F ',' 'NR>1 {print > ("days/" $1 ".csv")}' covid.csv
+# Verification: 346 daily CSV files were created.
+```
+
+Hint: `awk`, `print > name` append-writes the current line to the file called `name`. Remember to use `NR>1` which skips the first row of the CSV file as that's the header, not the actual data. Now let's make sure this worked:
+
+```bash
+ls days/ | head
+ls days/ | wc -l
+```
+
+How much space do all these files occupy?
+
+```bash
+du -h .
+```
+
+#TODO [is this the same amount of space as the original covid.csv file? Why should that be/not be? <1pts>]
+The original covid.csv uses 34M, while the days folder uses 35M. Splitting the data into many files increases disk usage because each file occupies whole filesystem blocks, leaving some unused space, and the directory also requires space.
+
+You should see `2020-01-21.csv`, `2020-01-22.csv`, etc. We would like to rename every file from `2020-MM-DD.csv` to `MM-DD.csv`. We can write a bash script that loops over the files and `mv`'s them to rename them. Or, here's another cool trick: let `sed` *write* the commands and only then hand them to `bash`. First look at the commands without running them:
+
+```bash
+cd days
+ls | sed 's/^2020-\(.*\)$/mv 2020-\1 \1/' | head -n 3
+```
+
+When the commands look right, run them all by replacing `| head -n 3` with `| bash`:
+
+```bash
+ls | sed 's/^2020-\(.*\)$/mv 2020-\1 \1/' | bash
+```
+
+#TODO [what do `\(...\)` and `\1` do in the `sed` pattern above? <1pts>]
+\(...\) captures the part of the filename after 2020-. \1 refers to that captured text. For example, it captures 01-21.csv, allowing sed to generate the command mv 2020-01-21.csv 01-21.csv.
+#TODO [why is it a good habit to look at the generated commands before piping them into `bash`? <1pts>]
+Previewing the generated commands helps detect mistakes before executing them. An incorrect command could rename or overwrite files unintentionally.
+
+Finally, compress all these daily CSV files using `xargs`:
+
+```bash
+#TODO [one line command that compresses all the files using xargs <1pts>]
+find . -name '*.csv' -print0 | xargs -0 gzip
+# Disk usage after gzip compression: 9.7M
+```
+
+How much space do all these files occupy after compressing each of them?
+
+```bash
+du -h .
+```
+
+Unzip all these compressed daily CSV files using `xargs` but this time use two cores/processors simultaneously for speed:
+
+```bash
+#TODO [one line command that uncompresses all the files using xargs with two cores/processors <1pts>]
+find . -name '*.csv.gz' -print0 | xargs -0 -n 1 -P 2 gunzip
+# Disk usage after decompression: 35M
+```
+
+Now recompress all the files using one of the best known open source compressor `xz -9 -e` where the `-9 -e` is for maximum compression. Also use `xargs` with *all* your cores/processors simultaneously for speed:
+
+```bash
+#TODO [one line command that compresses all the files using xz -9 -e and xargs <2pts>]
+find . -name '*.csv' -print0 | xargs -0 -n 1 -P "$(sysctl -n hw.ncpu)" xz -T1 -9 -e
+# Disk usage after xz compression: 7.8M
+```
+
+How much space do all these files occupy after compressing each of them?
+
+```bash
+du -h .
+```
+
+#TODO [why is this less space than when it the files were compressed with gzip? <1pts>]
+xz uses a different compression algorithm that compresses this dataset more effectively than gzip. With maximum compression settings, the files occupy 7.8M instead of 9.7M, at the cost of more computation.
+
+Now go to the directory above and use `tar` to make a container for the `days/` folder.
+
+```bash
+#TODO [tar command to make a container for the days/ folder <1pts>]
+tar -cf days.tar days/
+# Archive size reported by ls -lh: 7.3M
+ls -alh
+```
+
+#TODO [does this tar container compress the data even further? Explain. <1pts>]
+No. tar -cf packages the already compressed files into one archive without further compression. The earlier 7.8M from du measures allocated disk space, while the 7.3M from ls measures the archive's file size, so these measurements are not directly comparable.
+
+Masters students only (52019). Find the best possible compression for these csv files. This won't be the best possible compression in general as it's specific to the format of the files
+
+#TODO [Masters students only (52019): locate the best possible compression and prove it's best using `du -h .` <10pts>]
+
+Let's cleanup
+
+```bash
+cd ..
+rm -r days/
+```
+
+# Part 4: Reshaping text with `awk`, `sed` and `tr`
+
+Starting from `covid.csv`, use `awk` to write a file `texas.csv` with only the date and the cases of the Texas rows (comma-separated), 
+
+```bash
+#TODO [the `awk` command that writes `texas.csv` <1pts>]
+awk -F ',' '$3=="Texas" {print $1 "," $5}' covid.csv > texas.csv
+# Verification: texas.csv contains 67002 rows.
+head -n 5 texas.csv #to check your work
+wc -l texas.csv #to check your work
+```
+
+Use one `awk` call, with a filter and a command, to print the total number of cases in Texas on `2020-06-15`.
+
+```bash
+#TODO [the `awk` command with a filter and a command that prints the total <2pts>]
+awk -F ',' '$3=="Texas" && $1=="2020-06-15" {total += $5} END {print total}' covid.csv
+# Output: 91726
+```
+
+Then use `sed` to change the dates from `2020-03-15` to `15/03/2020`, writing the result to `texas_dmy.csv`.
+
+```bash
+#TODO [the `sed` command that writes `texas_dmy.csv` <2pts>]
+sed -E 's/^([0-9]{4})-([0-9]{2})-([0-9]{2}),/\3\/\2\/\1,/' texas.csv > texas_dmy.csv
+# Verification: dates use DD/MM/YYYY format; 67002 rows.
+head -n 5 texas_dmy.csv #to check your work
+wc -l texas_dmy.csv #to check your work
+```
+
+Turn `texas.csv` into a tab-separated file `texas.tsv` using the `tr` command:
+
+```bash
+#TODO [the `tr` command that writes out `texas.tsv` from `texas.csv` <1pts>]
+tr ',' '\t' < texas.csv > texas.tsv
+# Verification: tab-separated output; 67002 rows.
+head -n 5 texas.csv #just to check
+head -n 5 texas.tsv #just to check
+wc -l texas.csv #just to check
+wc -l texas.tsv #just to check
+```
+
+# Part 5: Reading JSON with `jq`
+
+`jq` is the `grep` and `cut` of JSON (see Lecture 2). Read through the help page first
+
+```bash
+man jq
+```
+
+If you got an error "No manual entry for jq", then you need to install it first: `sudo apt install jq` on Ubuntu or `brew install jq` on a Mac. 
+
+Create a small JSON file, an array of four records:
+
+```bash
+cd $my_52002_repo/labs/02/scratch
+cat << 'EOF' > counties.json
+[
+  {"state": "Texas",  "county": "Harris",    "cases": 120},
+  {"state": "Texas",  "county": "Bexar",     "cases": 80},
+  {"state": "Ohio",   "county": "Franklin",  "cases": 60},
+  {"state": "Alaska", "county": "Anchorage", "cases": 10}
+]
+EOF
+```
+
+Use `jq` to answer these questions about the file:
+
+```bash
+#TODO [command: how many records are in the array? <1pts>]
+jq 'length' counties.json
+# Output: 4
+#TODO [command: print the county of the first record as plain text, without the quotes <1pts>]
+jq -r '.[0].county' counties.json
+# Output: Harris
+#TODO [command: print only the Texas records, one per line <2pts>]
+jq -c '.[] | select(.state == "Texas")' counties.json
+# Output:
+# {"state":"Texas","county":"Harris","cases":120}
+# {"state":"Texas","county":"Bexar","cases":80}
+#TODO [command: the total number of cases in the Texas records <2pts>]
+jq '[.[] | select(.state == "Texas") | .cases] | add' counties.json
+# Output: 200
+```
+
+#TODO [what is the difference between `jq '.[0]'` and `jq '.[]'` on this file? <1pts>]
+jq '.[0]' returns only the first record in the array. jq '.[]' returns every record separately.
+
+Clean up when you are done:
+
+```bash
+rm counties.json
+```
+
+Note: although we covered processes using `ps`, backgroud jobs using `nohup` / `&` and the `tmux` virtual machines in lec02, we did not have any exercises on them in lab02. I have decuded to defer exercises on those topics until after we get `ssh` access to the HUJI supercomputer as it's more relevant for the setting of having jobs running on a remote machine.
+
+# Final checklist
+
+Before you push, check that:
+
+* every `#TODO` has a line afterwards that is filled in with your command, the real output, or a written English answer to the question in your own words;
+* `covid.csv` is **not** in your repository (`git status` should not mention it);
+* the file renders: `quarto render lab02.qmd` produces an HTML page with no errors (nothing in this lab is executed during rendering).
