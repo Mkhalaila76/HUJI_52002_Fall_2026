@@ -1,0 +1,554 @@
+---
+title: "Lab 3: Version control, tabular data, Parquet and databases"
+subtitle: "Big Data Algorithms"
+author: "Muhammad Khalaila"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    number-sections: false
+    code-copy: true
+    embed-resources: true
+execute:
+  eval: false
+---
+
+This lab has exercises that reinforce what we learned in Lecture 3 (`lectures/lec03_git_parquet_databases.qmd`), as well as the open source section of Lecture 2 (`lectures/lec02_linux_advanced.qmd`). You will work at the **terminal** and in Python and R.
+
+::: {.callout-warning}
+## Ground rules
+* Run every command yourself. Many answers depend on what you see on your own machine (your timings will not be the same as anyone else's, but the ranking should be).
+* Leave the "#TODO text [question text] text" line and start a new line underneath and write your answers on that new line
+* Part 4 makes a data file of about 2 GB. Check that you have 5 GB of free disk space (`df -h .`) and don't commit anything from your scratch folder.
+* **Mac users:** if an option fails on your Mac, say so in your answer and use the closest alternative. The places where we already know that it differs are marked.
+:::
+
+# Part 0: Setup
+
+I'm assuming your private github repository for this class (as set up in `setup/01_linux_git_github_setup.qmd`) is in the following location. If not, please edit the location below:
+
+```bash
+export my_52002_repo="$HOME/courses/HUJI_52002_Fall_2026"
+```
+
+Create a directory for this assignment, download this file and move it into `$my_52002_repo/labs/03/`. As in the previous labs, commit / push after chunks of work; the timestamp of your final push is your submission date.
+
+Create a scratch folder for this lab and move into it (the `scratch` line you added to `.gitignore` in Lab 1 keeps it out of git):
+
+```bash
+mkdir -p $my_52002_repo/labs/03/scratch
+cd $my_52002_repo/labs/03/scratch
+```
+
+Copy the covid 2020 report data from your lab 2 directory to the working directory or redownload it (see lec01).
+
+```bash
+#TODO [command to copy covid.csv from last lab's scratch folder or the download command <1pts>]
+cp "$my_52002_repo/labs/02/scratch/covid.csv" "$my_52002_repo/labs/03/scratch/"
+```
+
+# Part 1: Open source licenses **This section will not be tested.**
+
+Answer in your own words, using the open source section of Lecture 2.
+
+#TODO [you find a useful script in a public GitHub repository which has no `LICENSE` file. Are you allowed to use it in your own project? Why or why not? <1pts>]
+Being able to view the code does not mean we can use it in our own project. We should first check whether a license appears elsewhere, such as in the README, and follow its terms. If no license or permission is provided, we should ask the author for permission before using the code.
+#TODO [what is the difference between a permissive license and a copyleft license? <1pts>]
+A permissive license allows people to use, modify and include the code in closed-source software, provided they follow the license terms, such as keeping copyright notices. A copyleft license also allows use and modification, but when distributing a modified version or a covered derivative work, its source code must be made available to recipients under the same license. The exact requirements depend on the specific license.
+
+You work at a company which sells a closed source desktop application. A new feature would use a library. Consider three cases:
+
+#TODO [Consider the library `pandas` (BSD 3-clause). May you ship the application with your source code kept closed? What must you do? <1pts>]
+Yes. The BSD 3-Clause license allows the company to keep its application source code closed. It must include the copyright notices, license conditions and disclaimer in the documentation or other materials supplied with the application. It must not use the copyright holders' or contributors' names to endorse the product without permission.
+#TODO [Consider a library that is under the GPL. May you ship the application with your source code kept closed? <1pts>]
+No. If the application incorporates the GPL library into a combined program covered by the GPL, the company cannot distribute it while keeping its source code closed. It must distribute the combined program under the GPL and make the corresponding source code available to recipients.
+#TODO [you modify a GPL library, but only use it on your company's own computers and never give the program to anyone outside. Must you release your changes? Yes/no Why? <1pts>]
+No. The company does not have to release its changes because it only uses the modified library internally and does not distribute it outside the company. The GPL's source-code sharing requirements apply when the software is distributed.
+#TODO [why would a company with many lawyers prefer Apache 2.0 over MIT for code it uses? <1pts>]
+A company may prefer Apache 2.0 because it explicitly grants permission to use relevant patents held by contributors, within the scope defined by the license. MIT does not include an explicit patent license, so Apache 2.0 provides greater legal clarity about patent rights.
+#TODO [under the GPL you may sell the software, but your customers may then give it away for free. So how does a company like Red Hat earn money? <1pts>]
+Red Hat earns money by selling subscriptions and services such as technical support, security updates, maintenance and tested software versions. Customers pay for these services even though the software can be redistributed.
+#TODO [you wrote an R package in your thesis. Which license would you pick if you want everyone, including companies, to be able to use it without worry, and which would you pick if you want all improvements to it to stay open? <1pts>]
+I would choose the MIT license to allow broad use, including in closed-source commercial products, subject to its terms. I would choose the GPL if I wanted distributed modified versions to remain open under the GPL, with source code available to recipients. Private modifications would not have to be published.
+
+Let's practice reading the license type from github.
+
+#TODO [What is the license of `tensorflow/tensorflow` (branch `master`, file `LICENSE`) <1pts>]
+TensorFlow is licensed under the Apache License, Version 2.0.
+#TODO [What is the license of `quarto-dev/quarto-cli` (branch `main`, file `COPYING.md`) <1pts>]
+Quarto CLI is licensed under the MIT License.
+#TODO [What is the license of `git/git` (branch `master`, file `COPYING`) <1pts>]
+Git is licensed under the GNU General Public License, version 2 (GPLv2).
+
+
+# Part 2: Version control with `git` **This section will not be tested.**
+
+**This entire part is optional for undergraduates but required for MASTERS students**
+
+We play in a throw-away repository so your class repository is never touched. Make it *next to* your class repository, not inside of it:
+
+```bash
+cd $my_52002_repo/..
+git init -b main lab03_playground
+cd lab03_playground
+```
+
+#TODO [why did we not make this repository inside of `labs/03/scratch`? <1pts>]
+
+**The staging area.** Run:
+
+```bash
+echo "first line" > notes.txt
+git add notes.txt
+echo "second line" >> notes.txt
+git status
+git diff
+git diff --staged
+```
+
+#TODO [`git status` lists `notes.txt` twice. What is in the staging area, what is in the working folder and which of the two `git diff` commands showed which? <1pts>]
+
+Commit the rest of the work with one shortcut, then try the shortcut on a new file:
+
+```bash
+git commit -m "add notes"
+git commit -am "add second line"
+echo "an idea" > ideas.txt
+echo "third line" >> notes.txt
+git commit -am "add third line"
+git status
+```
+
+#TODO [the last commit used `-a`, but `ideas.txt` was not committed. Why? <1pts>]
+
+**Three ways to undo.** Make a bad commit:
+
+```bash
+echo "BAD line" >> notes.txt
+git commit -am "oops: a bad line"
+git log --oneline -n 3
+```
+
+Undo it the way that is safe for commits you have already pushed (when `git` opens an editor for the message, save and close it):
+
+```bash
+#TODO [command that undoes the bad commit by making a new commit <1pts>]
+cat notes.txt
+git log --oneline -n 5
+```
+
+#TODO [is the bad commit still in the history? Why is that the safe choice for a commit that you have pushed? <1pts>]
+
+Make another bad commit. This one we never pushed, so we can rewrite the history:
+
+```bash
+echo "scribble" >> notes.txt
+git commit -am "made a bad scribble"
+#TODO [command that moves the branch back one commit and keeps the change staged <1pts>]
+git status
+#TODO [command that un-stages the change but keeps it in the file <1pts>]
+git status
+#TODO [command that throws away the uncommitted change in the file <1pts>]
+git status
+cat notes.txt
+```
+
+Visit an old snapshot and come back:
+
+```bash
+git switch --detach HEAD~2
+cat notes.txt
+git status
+git switch main
+```
+
+**Branches and conflicts.**
+
+```bash
+git switch -c experiment
+echo "from experiment" >> notes.txt
+git commit -am "try an idea"
+git switch main
+cat notes.txt
+cat .git/refs/heads/experiment
+wc -c .git/refs/heads/experiment
+git log --oneline -n 1 experiment
+```
+
+Now change the same line on `main` and merge:
+
+```bash
+echo "from main" >> notes.txt
+git commit -am "main goes its own way"
+git merge experiment
+git status
+cat notes.txt
+```
+
+#TODO [why could `git` not merge this by itself? In the output of `cat`, which part is from which branch? <1pts>]
+
+Resolve the conflict so that the file has both lines (and no markers), and finish the merge:
+
+```bash
+#TODO [how you edited the file, and the commands that finish the merge <1pts>]
+git log --oneline --graph -n 6
+git branch -d experiment
+```
+
+**`.gitignore`.**
+
+```bash
+echo "1,2" > data.csv
+echo "3,4" > keep.csv
+```
+
+We want to ignore all CSVs except `keep.csv`.
+
+```bash
+#TODO [echo the correct line appended into .gitignore <1pts>]
+git status --ignored
+git check-ignore -v data.csv
+git add .gitignore keep.csv
+git commit -m "ignore CSVs, except keep.csv"
+```
+
+**`stash` and `worktree`.**
+
+```bash
+echo "half-finished thought" >> notes.txt
+echo "a new file" > new.txt
+git stash
+git status
+ls
+```
+
+#TODO [`git stash` took one of the two changes and left the other. Which and why? Which option would have taken both? <1pts>]
+
+```bash
+git stash pop
+git restore notes.txt
+rm new.txt
+#TODO [command that makes a worktree in the folder ../lab03_wt on a new branch called hotfix <1pts>]
+git worktree list
+cd ../lab03_wt
+echo "urgent fix" > fix.txt
+git add fix.txt
+git commit -m "urgent fix"
+cd -
+ls
+#TODO [command that removes the worktree <1pts>]
+git branch -D hotfix
+```
+
+Say whether you would use a stash, a worktree or a branch and explain why: 
+#TODO [a colleague needs one number from you in five minutes <1pts>]
+#TODO [a long run keeps using the files in your folder and you need to fix a bug at the same time <1pts>]
+#TODO [you start a new analysis which will be reviewed and merged <1pts>]
+
+Clean up (look at the path first as `rm -rf` has no undo!):
+
+```bash
+cd $my_52002_repo/labs/03/scratch
+ls $my_52002_repo/../lab03_playground
+git -C $my_52002_repo/../lab03_playground branch   # should show just main
+rm -rf $my_52002_repo/../lab03_playground
+```
+
+# Part 3: Tabular data and types
+
+## Statistical types
+
+A hospital gives you a table with one row per visit. For each column, give the statistical type (with its subtype), and the Parquet type you would store it as (look it up in the table in lec03):
+
+* `zip_code`, e.g., `02134`
+  * #TODO [type, subtype and storage <1pts>]
+  Statistical type: categorical, nominal.
+Parquet storage: STRING (UTF-8 text).
+A ZIP code identifies an area rather than a quantity. Storing it as text preserves leading zeros, such as in "02134".
+* `pain_score`, from 1 (no pain) to 10 (worst pain)
+  * #TODO [type, subtype and storage <1pts>]
+  Statistical type: categorical, ordinal.
+Parquet storage: INT32.
+The values represent ordered pain levels, but equal differences and ratios between scores are not guaranteed.
+* `temp_c`, the temperature of the patient in Celsius
+  * #TODO [type, subtype and storage <1pts>]
+  Statistical type: quantitative, continuous, interval scale.
+Parquet storage: DOUBLE.
+Differences in Celsius are meaningful, but ratios are not, because zero Celsius is not an absolute zero.
+* `n_prior_visits`, the number of earlier visits
+  * #TODO [type, subtype and storage <1pts>]
+  Statistical type: quantitative, discrete, ratio scale.
+Parquet storage: INT32.
+This is a count of whole visits. Zero means no prior visits, and both differences and ratios are meaningful.
+* `doctor_note`, what the doctor wrote
+  * #TODO [type, subtype and storage <1pts>]
+  Statistical type: unstructured text (free text).
+Parquet storage: STRING (UTF-8 text).
+The doctor's note contains written descriptions rather than numerical measurements or predefined categories.
+* `smoker`, yes or no
+  * #TODO [type, subtype and storage <1pts>]
+  Statistical type: categorical, nominal, binary.
+Parquet storage: BOOLEAN.
+The values indicate whether the patient smokes. Coding them as 0 and 1 labels the two categories rather than measuring a quantity.
+
+
+#TODO [a colleague reports that the mean `pain_score` was 4.2 before treatment and 2.1 after, so "the pain halved". What is wrong with that? <1pts>]
+Pain scores are ordinal: they indicate an order, but equal differences and meaningful ratios are not guaranteed. The mean score halved from 4.2 to 2.1, but this does not imply that the actual pain intensity halved.
+#TODO [why can you say that 20 kg is twice 10 kg, but not that 20°C is twice as hot as 10°C? <1pts>]
+Mass in kilograms is measured on a ratio scale with a meaningful zero, so 20 kg is twice 10 kg. Celsius temperature is measured on an interval scale: zero is a reference point rather than an absence of temperature. Therefore, differences are meaningful, but ratios such as "twice as hot" are not.
+## Objects and attributes
+
+#TODO [in one sentence, what is one object (one row) of `covid.csv`? <1pts>]
+One row represents a county in a particular US state on a specific date, with its reported cumulative COVID-19 case and death counts.
+
+Run the following:
+
+```bash
+wc -l covid.csv
+head -n 1 covid.csv | awk -F, '{print NF}'
+```
+
+#TODO [what are $n$ and $p$ of this table? <1pts>]
+n = 884,737 observations, excluding the header row.
+p = 6 variables: date, county, state, fips, cases and deaths.
+Use `awk` to count the missing values:
+
+```bash
+#TODO [command: the number of rows with no fips <1pts>]
+awk -F, 'NR > 1 && $4 == "" {n++} END {print n+0}' covid.csv
+# Output: 8266
+#TODO [command: the number of rows with no deaths <1pts>]
+awk -F, 'NR > 1 && $6 == "" {n++} END {print n+0}' covid.csv
+# Output: 18761
+```
+
+Now let's see what programs guess. First edit the location below if your repo is elsewhere:
+
+```{python}
+import os
+import pandas as pd
+
+os.chdir(os.path.expanduser("~/courses/HUJI_52002_Fall_2026/labs/03/scratch"))
+
+guess = pd.read_csv("covid.csv")
+print(guess.dtypes)
+print(guess[(guess.state == "California") & (guess.county == "Orange")].head(1))
+```
+
+#TODO [what happened to the fips code `06059` of Orange County? Why is it a decimal number in `pandas` and not an integer? <2pts>]
+Pandas interpreted fips as numeric, so "06059" lost its leading zero and became 6059.0. The column was inferred as float64 because it contains missing values represented by NaN, which the standard int64 type cannot store.
+#TODO [`cases` is an `int64` but `deaths` is a `float64`, although both are counts. Why? <1pts>]
+Both columns contain whole-number counts, but deaths has missing values. Pandas inferred deaths as float64 to represent these missing values as NaN. The cases column has no missing values, so it was inferred as int64.
+#TODO [why is it better for `fips` to be stored as text, even though it is all digits? <1pts>]
+FIPS codes are identifiers, not quantities, so arithmetic operations on them are not meaningful. Storing them as text preserves their original format, including leading zeros such as in "06059".
+
+# Part 4: Parquet
+
+**Converting.** Write `df` out as a Parquet file. Then do the same in R, reading the CSV with the `arrow` package. Hint: both commands are in Lecture 3, section "Converting `covid.csv`" (`lectures/lec03_git_parquet_databases.qmd`, lines 736–756):
+
+```{python}
+import os
+import pandas as pd
+import pyarrow   # to_parquet needs it installed
+
+
+os.chdir(os.path.expanduser("~/courses/HUJI_52002_Fall_2026/labs/03/scratch"))
+
+df = pd.read_csv("covid.csv", dtype={"fips": str}, parse_dates=["date"])
+#TODO [the command which writes df to covid_python.parquet with zstd compression <1pts>]
+df.to_parquet("covid_python.parquet", compression="zstd", index=False)
+```
+
+```{r}
+library(arrow)
+  # edit if your repo is elsewhere
+setwd("~/courses/HUJI_52002_Fall_2026/labs/03/scratch")
+
+df <- read_csv_arrow("covid.csv", col_types = schema(fips = string()))
+#TODO [the command which writes df to covid_R.parquet with zstd compression <1pts>]
+write_parquet(df, "covid_R.parquet", compression = "zstd")
+```
+
+
+Let's compare what the two languages wrote:
+
+```{python}
+import pyarrow.parquet as pq
+
+print(pq.read_schema("covid_python.parquet"))
+print(pq.read_schema("covid_R.parquet"))
+```
+
+#TODO [give two columns with different storage types in the two files. Why is `deaths` a decimal type in one and an integer in the other? <2pts>]
+The date column is timestamp[us] in the Python file but date32[day] in the R file. The deaths column is double in the Python file but int32 in the R file.
+
+Pandas used floating-point values to represent deaths with missing values as NaN. Arrow's CSV reader used through R can represent missing values separately from integer values, so deaths remained an integer column.
+
+**Reading only some columns.** Time reading the whole table versus only the `state` and `cases` columns, in both formats:
+
+```{python}
+import time
+
+def seconds(f):
+    t0 = time.perf_counter()
+    f()
+    return round(time.perf_counter() - t0, 3)
+
+print(seconds(lambda: pd.read_csv("covid.csv")))
+print(seconds(lambda: pd.read_csv("covid.csv", usecols=["state", "cases"])))
+#TODO [two lines just like the two above, but for reading covid_python.parquet <1pts>]
+print(seconds(lambda: pd.read_parquet("covid_python.parquet")))
+print(seconds(lambda: pd.read_parquet("covid_python.parquet", columns=["state", "cases"])))
+```
+
+#TODO [the four times. Which format speeds up the most when you ask for two columns only, and why is the speedup so much smaller for the other format? <2pts>]
+After warming up both readers, the times were:
+CSV, all columns: 0.022 seconds.
+CSV, state and cases only: 0.041 seconds.
+Parquet, all columns: 0.018 seconds.
+Parquet, state and cases only: 0.009 seconds.
+
+Parquet showed a 2x speedup when reading only two columns because its column-oriented layout allows unnecessary columns to be skipped. CSV still requires scanning the rows to locate the requested fields. In this short measurement, selecting two CSV columns was slower; timing variability and caching can affect such small measurements.
+
+**The annotations.** Parquet stores notes about each column in the footer. Let's read them:
+
+```{python}
+meta = pq.ParquetFile("covid_python.parquet").metadata
+print(meta.num_rows, meta.num_columns, meta.num_row_groups)
+
+group = meta.row_group(0)
+for i in range(group.num_columns):
+    col = group.column(i)
+    print(col.path_in_schema, col.total_compressed_size, col.statistics.min, col.statistics.max, col.statistics.null_count)
+```
+
+#TODO [MASTERS ONLY: how many row groups are in this file? Which column takes the most space and which the least? <1pts>]
+#TODO [MASTERS ONLY: `county` and `fips` have about the same number of distinct values, but `state` is about 60 times smaller than `county`. What are the two reasons that `state` compresses so well? (Hint: look at the `state` column of the rows of one date.) <2pts>]
+
+Now write the same table with smaller row groups, so that a program has something to skip, and print the notes for each row group:
+
+```{python}
+df.to_parquet("covid_rg.parquet", compression="zstd", row_group_size=100_000, index=False)
+
+meta = pq.ParquetFile("covid_rg.parquet").metadata
+for r in range(meta.num_row_groups):
+    dates = meta.row_group(r).column(0).statistics
+    print(r, dates.min, dates.max)
+```
+
+#TODO [MASTERS ONLY: for the query "rows with date on or after 2020-12-01", how many of the row groups can a program skip? How does it know, without reading them? <1pts>]
+
+```{python}
+#TODO [MASTERS ONLY: the same loop, but printing the min and max of state for each row group <1pts>]
+```
+
+#TODO [MASTERS ONLY: for the query "rows with state Texas", how many of the row groups can a program skip? Why? <1pts>]
+
+
+**Which format when?** For each job, choose among CSV, CSV + `xz`, JSON and Parquet, and say why in a few words:
+
+#TODO [(a) emailing a table of 200 rows to a colleague who opens everything in Excel <1pts>]
+CSV, because Excel can open it directly and a table of 200 rows is small enough to email without additional compression.
+#TODO [(b) keeping last year's raw logs in cold storage, in case an auditor asks for them, at the smallest cost <1pts>]
+CSV + xz, because strong lossless compression reduces storage space and cost. Slower decompression is acceptable because the archived data is rarely accessed.
+#TODO [(c) a sensor which adds one reading every second to a file all day <1pts>]
+CSV, because each new reading can be appended as a line at the end of the file without rewriting the existing data. It is suitable for readings with a fixed set of fields.
+#TODO [(e) a 300 GB table where analysts add up two or three of the columns all day <1pts>]
+Parquet, because its column-oriented layout allows analysts to read only the two or three columns they need instead of the entire 300 GB table. Compression also reduces storage and data-reading costs.
+
+
+#TODO [MASTERS ONLY: The file covid_python.parquet is about 3.3 MB, but `covid.csv.xz` is about 1.8 MB. Make a Parquet file which is smaller than `covid.csv.xz`, and which holds all of the rows and all of the columns. You may change anything: row order, compression, level, row groups, column types and so on. <10pts>]
+
+
+# Part 5: Databases: when Parquet is not enough
+
+Here we feel the pain of Parquet's limitations. The next lecture is where we fix them.
+
+**The data.** New York City publishes every yellow taxi trip, already as Parquet. Download January 2023 (48 MB, about 3 million trips, one row per trip):
+
+```bash
+cd $my_52002_repo/labs/03/scratch
+curl -O https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2023-01.parquet
+ls -alh yellow_tripdata_2023-01.parquet
+```
+
+**Adding a row.** Insert one trip (a copy of the first one) in the middle of the file, and save it:
+
+```bash
+cat > add_row.py << 'EOF'
+import time
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+t0 = time.perf_counter()
+taxi = pq.read_table("yellow_tripdata_2023-01.parquet")
+one = taxi.slice(0, 1)                                     # a copy of the first trip
+middle = taxi.num_rows // 2
+taxi = pa.concat_tables([taxi.slice(0, middle), one, taxi.slice(middle)])
+pq.write_table(taxi, "taxi_plus_one.parquet", compression="zstd")
+print(taxi.num_rows, "rows", round(time.perf_counter() - t0, 2), "seconds to add one row")
+EOF
+/usr/bin/time -f "%M KB peak memory" python3 add_row.py   # Mac: /usr/bin/time -l python3 add_row.py, and look for "maximum resident set size"
+ls -alh yellow_tripdata_2023-01.parquet taxi_plus_one.parquet
+```
+
+#TODO [how long did it take to add one row, and how much memory did it need? Compare the memory to the size of the file. Why does it need so much? <2pts>]
+Adding one row took 1.44 seconds. Peak resident memory was 710,098,944 bytes (about 677 MiB), roughly 15 times the original file size. The script reads the entire compressed table into memory and rewrites it. Decoded data and additional reading/writing buffers require much more memory than the compressed file on disk.
+On macOS, I used /usr/bin/time -l instead of the Linux -f option. For the append experiment, I used sed -i '' instead of sed -i.
+
+Now add the row at the very *end* of the file instead:
+
+```bash
+sed -i 's|middle = taxi.num_rows // 2|middle = taxi.num_rows|' add_row.py   # Mac: sed -i '' 's|...|...|' add_row.py
+/usr/bin/time -f "%M KB peak memory" python3 add_row.py
+rm taxi_plus_one.parquet
+```
+
+#TODO [did adding at the end save any time? <1pts>]
+Adding at the end took 1.40 seconds, compared with 1.44 seconds in the middle. This is only a small difference, not a meaningful improvement, because the script still reads and rewrites the entire table.
+#TODO [A CSV can grow at the end with `echo ... >> file.csv` without touching the rest of the file. Why can't a Parquet file do the same append at the end? <1pts>]
+CSV is line-based text, so a new row can be appended directly. Parquet stores binary column data in row groups and has a footer describing their structure and locations. Adding rows requires updating that structure and metadata, rather than simply appending a text line. Our script does this by rewriting the file.
+
+**Deleting rows.** Only two trips started in Jamaica Bay (zone 2). Delete them:
+
+```bash
+cat > delete_rows.py << 'EOF'
+import time
+import pyarrow.compute as pc
+import pyarrow.parquet as pq
+
+t0 = time.perf_counter()
+taxi = pq.read_table("yellow_tripdata_2023-01.parquet")
+taxi = taxi.filter(pc.field("PULocationID") != 2)          # delete the trips picked up in Jamaica Bay
+pq.write_table(taxi, "taxi_minus_two.parquet", compression="zstd")
+print(taxi.num_rows, "rows", round(time.perf_counter() - t0, 2), "seconds to delete two rows")
+EOF
+/usr/bin/time -f "%M KB peak memory" python3 delete_rows.py
+rm taxi_minus_two.parquet
+```
+
+#TODO [how long did it take to delete two rows out of three million, and how much memory did it need? <1pts>]
+Deleting two rows took 1.37 seconds. Peak resident memory was 1,086,734,336 bytes, approximately 1.01 GiB. The operation read the entire table, filtered it and rewrote the remaining 3,066,764 rows.
+
+#TODO [Imagine the file was 30 million rows and the time taken for delete and insertion scales linearly? If you are doing hundreds of deletes and and insertions per hour, can parquet scale? <1pts>]
+With about ten times as many rows and linear scaling, each insertion or deletion would take roughly 14 seconds. Repeating full-table reads and rewrites hundreds of times per hour would require substantial processing, memory and disk I/O. This approach does not scale well for frequent small updates.
+#TODO [If you are doing hundreds of deletes and and insertions per hour, what else can go wrong with parquet? <1pts>]
+Concurrent writers can overwrite each other's changes, causing lost updates. A failure during an unsafe overwrite can also leave an incomplete file. A standalone Parquet file does not provide transactions or concurrency control, so additional coordination is needed to make frequent updates reliable.
+
+Clean up:
+
+```bash
+cd $my_52002_repo/labs/03/scratch
+rm -f covid_python.parquet covid_R.parquet covid_rg.parquet covid.csv.xz yellow_tripdata_2023-01.parquet add_row.py delete_rows.py
+ls -alh
+```
+
+# Final checklist
+
+Before you push, check that:
+
+* every `#TODO` has a line afterwards that is filled in with your command, the real output, or a written English answer to the question in your own words;
+* no data files are in your repository (`git status` should not mention `covid.csv` or any `.parquet` file);
+* the play branches (`experiment`, and `hotfix` for masters students) were deleted, so `git branch` in `lab03_playground` showed just `main` before you removed the folder;
+* the `lab03_playground` folder is gone, and `git status` in your class repository shows no sign of it;
+* the file renders: `quarto render lab03.qmd` produces an HTML page with no errors (nothing in this lab is executed during rendering).
