@@ -1,0 +1,486 @@
+---
+title: "Lab 5"
+subtitle: "Big Data Algorithms"
+author: "muhammad khalaila"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    number-sections: false
+    code-copy: true
+    embed-resources: true
+execute:
+  eval: false
+---
+
+This lab has exercises that reinforce Lecture 5 (`lectures/lec05_basic_sql_continued.qmd`): the new SQL from computed columns to subqueries. There is one short problem for each idea in the lecture, in the same order as the lecture.
+
+::: {.callout-warning}
+## Ground rules
+* Leave the "#TODO text [question text] text" line and start a new line underneath and write your answers on that new line
+* Write each SQL statement underneath its `#TODO` line, and below it paste the answer Postgres gave you (or, if it is long, the first few rows).
+* Use only what we covered in Lectures 4 and 5.
+:::
+
+::: {.callout-note}
+## `awk` is only for reference
+The lecture shows the `awk` version of almost every SQL query. **`awk` is only for reference**: there are no `awk` questions in this lab, and every answer here requires writing SQL (or English).
+:::
+
+# Part 0: Setup
+
+I'm assuming your private github repository for this class is in the following location. If not, please edit the location below:
+
+```bash
+export my_52002_repo="$HOME/workspace/HUJI_52002_Fall_2026"
+```
+
+Create a directory for this assignment, download this file and move it into `$my_52002_repo/labs/05/`. As in the previous labs, commit / push after chunks of work; the timestamp of your final push is your submission date.
+
+As in Lab 4, the SQL is done **on your laptop**, in the `lab04` database that already holds the `covid` table. Start postgres from bash below:
+
+```bash
+psql lab04
+```
+
+```sql
+-- turn on timing so you can see how long queries take
+\timing on
+-- convenience for display so everything goes to console (rather than opening in `less`)
+\pset pager off
+--- let's make sure the data is still there
+SELECT count(*) FROM covid;
+```
+
+If that last line errored or didn't give the correct number of rows 884,737, you'll have to set up the database again (see beginning of lab 4).
+
+# Part 1: `count(*)` vs `count(column)`
+
+```sql
+#TODO [in one query: the number of rows, the number of rows with a recorded deaths value, and the number with a recorded fips <1pts>]
+SELECT state, COUNT(*) AS missing_deaths
+FROM covid
+WHERE deaths IS NULL
+GROUP BY state;
+-- state       | missing_deaths
+-- Puerto Rico | 18761
+#TODO [which state(s) have rows with a missing deaths value, and how many such rows each? <1pts>]
+SELECT state, COUNT(*) AS missing_deaths
+FROM covid
+WHERE deaths IS NULL
+GROUP BY state;
+
+-- state       | missing_deaths
+-- Puerto Rico | 18761
+```
+
+# Part 2: Row-level vs aggregate
+
+#TODO [For each of these three queries, say whether it is row-level or aggregate, and how many rows it returns: (a) `SELECT county FROM covid WHERE state = 'Ohio' AND date = '2020-12-31';` (b) `SELECT max(cases) FROM covid WHERE state = 'Ohio';` (c) `SELECT state, max(cases) FROM covid GROUP BY state;` <2pts>]
+(a) Row-level. It returns 88 rows, one for each Ohio county record on December 31, 2020.
+(b) Aggregate. It returns 1 row because MAX(cases) computes one maximum across all Ohio records. The maximum is 84,050.
+(c) Aggregate. It returns 55 rows. GROUP BY state creates one group for each distinct state value, and MAX(cases) returns one maximum per group.
+
+# Part 3: Tuples for `DISTINCT`
+
+```sql
+#TODO [on 2020-06-30: the number of different county names, and the number of different (state, county) pairs, in one query <1pts>]
+ unique_county_names | unique_state_county_pairs 
+---------------------+---------------------------
+                1880 |                      3150
+```
+
+#TODO [Why is the second number bigger? <1pts>]
+The second number is larger because the same county name can appear in multiple states. For example, Frederick appears in Maryland and Virginia, so it counts as one distinct county name and two distinct (state, county) pairs.
+
+```sql
+#TODO [the cases and deaths of Miami-Dade, Florida on 2020-12-31, using a tuple comparison (state, county) = (...) instead of two separate conditions <1pts>]
+SELECT cases, deaths
+FROM covid
+WHERE date = '2020-12-31'
+  AND (state, county) = ('Florida', 'Miami-Dade');
+
+-- cases  | deaths
+-- -------+-------
+-- 298872 | 4188
+```
+
+# Part 4: Computed columns
+
+```sql
+#TODO [deaths divided by cases for Cook County, Illinois on 2020-12-31 (with nothing else changed) <1pts>]
+SELECT deaths / cases
+FROM covid
+WHERE county = 'Cook'
+  AND state = 'Illinois'
+  AND date = '2020-12-31';
+
+-- ?column?
+-- 0
+```
+
+#TODO [Why did you get 0? <1pts>]
+Both deaths and cases are integers, so PostgreSQL uses integer division and drops the fractional part. Since deaths is smaller than cases, the result is 0.
+
+```sql
+#TODO [fix the previous query get the actual rate and name the column death_rate <1pts>]
+SELECT deaths::numeric / cases AS death_rate
+FROM covid
+WHERE county = 'Cook'
+  AND state = 'Illinois'
+  AND date = '2020-12-31';
+
+-- death_rate
+-- 0.02104650808328168027
+#TODO [the same as a percentage rounded to 2 decimals, named death_rate_pct (you should get 2.10) <1pts>]
+SELECT ROUND(100.0 * deaths / cases, 2) AS death_rate_pct
+FROM covid
+WHERE county = 'Cook'
+  AND state = 'Illinois'
+  AND date = '2020-12-31';
+
+-- death_rate_pct
+-- 2.10
+#TODO [on 2020-12-31: the county, state and death_rate_pct of the 5 counties with at least 10000 cases that have the highest death rate (leave out the missing deaths) <2pts>]
+SELECT county,
+       state,
+       ROUND(100.0 * deaths / cases, 2) AS death_rate_pct
+FROM covid
+WHERE date = '2020-12-31'
+  AND cases >= 10000
+  AND deaths IS NOT NULL
+ORDER BY deaths::numeric / cases DESC
+LIMIT 5;
+
+-- county        | state         | death_rate_pct
+-- New York City | New York      | 5.84
+-- Somerset      | New Jersey    | 5.23
+-- Essex         | New Jersey    | 5.04
+-- Bergen        | New Jersey    | 4.89
+-- Norfolk       | Massachusetts | 4.77
+```
+
+# Part 5: `CASE`
+
+```sql
+#TODO [on 2020-12-31: label each county 'high' if it has at least 1000 deaths, 'medium' if at least 100 and 'low' otherwise, name the label size, and count the counties in each label <2pts>]
+SELECT CASE
+           WHEN deaths >= 1000 THEN 'high'
+           WHEN deaths >= 100 THEN 'medium'
+           ELSE 'low'
+       END AS size,
+       COUNT(*) AS county_count
+FROM covid
+WHERE date = '2020-12-31'
+GROUP BY size
+ORDER BY county_count DESC;
+
+-- size   | county_count
+-- low    | 2697
+-- medium | 487
+-- high   | 61
+```
+
+#TODO [78 counties have a missing deaths value on 2020-12-31. Which label did they get, and why? Is that label correct? <1pts>]
+All 78 counties received the label 'low'. Comparisons with NULL evaluate to unknown, so neither WHEN condition is true and CASE uses the ELSE branch. A better label would be 'unknown', because the number of deaths is missing.
+
+# Part 6: String functions
+
+```sql
+#TODO [on 2020-12-31: the 3 counties with the most deaths, shown as one column place like "Cook, Illinois" next to the deaths (leave out the missing deaths) <1pts>]
+SELECT county || ', ' || state AS place,
+       deaths
+FROM covid
+WHERE date = '2020-12-31'
+  AND deaths IS NOT NULL
+ORDER BY deaths DESC
+LIMIT 3;
+
+-- place                   | deaths
+-- New York City, New York | 25144
+-- Los Angeles, California | 10345
+-- Cook, Illinois          |  8285
+#TODO [the state of Harris County, Texas on 2020-12-31 in capital letters <1pts>]
+SELECT UPPER(state) AS state_upper
+FROM covid
+WHERE county = 'Harris'
+  AND state = 'Texas'
+  AND date = '2020-12-31';
+
+-- state_upper
+-- TEXAS
+#TODO [on 2020-12-31: the 5 shortest county names (with their state and their length), shortest first, then in alphabetical order <1pts>]
+SELECT county, state, LENGTH(county) AS name_length
+FROM covid
+WHERE date = '2020-12-31'
+ORDER BY name_length, county, state
+LIMIT 5;
+
+-- county | state        | name_length
+-- Ada    | Idaho        | 3
+-- Bay    | Florida      | 3
+-- Bay    | Michigan     | 3
+-- Bee    | Texas        | 3
+-- Day    | South Dakota | 3
+#TODO [on 2020-12-31: the first two characters of the fips code of every Ohio county, and how many counties have each (there should be one row) <1pts>]
+SELECT SUBSTR(fips, 1, 2) AS state_code,
+       COUNT(*) AS county_count
+FROM covid
+WHERE state = 'Ohio'
+  AND date = '2020-12-31'
+GROUP BY state_code;
+
+-- state_code | county_count
+-- 39         | 88
+#TODO [how many rows have a state name with extra spaces at either end? <1pts>]
+SELECT COUNT(*) AS rows_with_extra_spaces
+FROM covid
+WHERE state <> TRIM(state);
+
+-- rows_with_extra_spaces
+-- 0
+```
+
+# Part 7: Missing data helpers: `coalesce` and `NULLIF`
+
+```sql
+#TODO [on 2020-12-31, in one query: the number of rows, the number with a recorded deaths value, the mean deaths rounded to 2 decimals, and the mean deaths with the missing values counted as 0, rounded to 2 decimals <2pts>]
+SELECT COUNT(*) AS total_rows,
+       COUNT(deaths) AS recorded_deaths,
+       ROUND(AVG(deaths), 2) AS avg_recorded,
+       ROUND(AVG(COALESCE(deaths, 0)), 2) AS avg_missing_as_zero
+FROM covid
+WHERE date = '2020-12-31';
+
+-- total_rows | recorded_deaths | avg_recorded | avg_missing_as_zero
+-- 3245       | 3167            | 109.27       | 106.64
+```
+
+#TODO [Which of the two means is the right "average deaths per county", and why? <1pts>]
+109.27 is the average for the 3,167 counties with reported deaths. The lower average, 106.64, assumes that all 78 counties with missing values had zero deaths. We cannot determine the average for all counties without knowing those missing values.
+
+```sql
+#TODO [on 2020-12-31: the county, state, cases, deaths and death rate (in percent) of every county with 0 cases, without a division-by-zero error <1pts>]
+SELECT county,
+       state,
+       cases,
+       deaths,
+       100.0 * deaths / NULLIF(cases, 0) AS death_rate_pct
+FROM covid
+WHERE date = '2020-12-31'
+  AND cases = 0
+ORDER BY state, county;
+
+-- county  | state    | cases | deaths | death_rate_pct
+-- Unknown | Kansas   | 0     | 408    |
+-- Unknown | Maryland | 0     | 57     |
+```
+
+# Part 8: Set operations
+
+In this part, "the top 5" of a day means the 5 counties with the most cases on that day, as (state, county) pairs.
+
+```sql
+#TODO [the counties in the top 5 of 2020-06-30 or the top 5 of 2020-12-31, sorted by state and county (you should get 6) <1pts>]
+-- state      | county
+-- Arizona    | Maricopa
+-- California | Los Angeles
+-- Florida    | Miami-Dade
+-- Illinois   | Cook
+-- New York   | Nassau
+-- New York   | New York City
+#TODO [the counties in both top 5s <1pts>]
+-- state      | county
+-- Arizona    | Maricopa
+-- California | Los Angeles
+-- Illinois   | Cook
+-- New York   | New York City
+#TODO [the counties in the top 5 of 2020-06-30 but not the top 5 of 2020-12-31 <1pts>]
+ state    | county
+----------+--------
+ New York | Nassau
+```
+
+#TODO [Why do the `SELECT ... LIMIT 5` parts need parentheses around them? <1pts>]
+The parentheses make each ORDER BY and LIMIT 5 apply to its own SELECT, so each date contributes its five highest-case counties before the set operation runs. A LIMIT at the end without parentheses applies to the combined result.
+
+```sql
+#TODO [a report of the 3 states with the most deaths on 2020-12-31, with one extra row at the bottom 'all states' and the total deaths of the whole country <2pts>]
+-- state      | total_deaths
+-- New York   | 37557
+-- Texas      | 28155
+-- California | 25965
+-- all states | 346050
+```
+
+#TODO [Why `UNION ALL` and not `UNION` for the report above? <1pts>]
+UNION ALL appends the summary row to the three state rows without checking for duplicates. UNION would return the same four rows in this report because their state labels are distinct.
+
+# Part 9: Grouped queries and `HAVING`
+
+```sql
+#TODO [the 3 counties with the largest max(deaths) over the whole year, grouped by state and county, with the column named max_deaths (put the missing values last with NULLS LAST) <1pts>]
+-- state      | county        | max_deaths
+-- New York   | New York City | 25144
+-- California | Los Angeles   | 10345
+-- Illinois   | Cook          | 8285
+```
+
+Run this query:
+
+```sql
+SELECT state, county, count(*)
+  FROM covid
+  WHERE date = '2020-12-31'
+  GROUP BY state;
+```
+
+#TODO [Why does it fail? Write a fixed version that counts the counties of each state <2pts>]
+The query groups rows by state, but each state can have multiple counties. PostgreSQL cannot return a single county name for a state group. Removing county from SELECT lets COUNT(*) count the county records for each state on that date.
+
+```sql
+#TODO [on 2020-12-31: the states with more than 150 counties, and how many each (you should get 2) <1pts>]
+SELECT state, COUNT(*) AS county_count
+FROM covid
+WHERE date = '2020-12-31'
+GROUP BY state
+HAVING COUNT(*) > 150
+ORDER BY county_count DESC;
+
+-- state   | county_count
+-- Texas   | 254
+-- Georgia | 160
+```
+
+# Part 10: Dates
+
+```sql
+#TODO [the number of rows of Rhode Island in each month, using extract, oldest month first <1pts>]
+-- month | row_count
+-- 3     | 66
+-- 4     | 180
+-- 5     | 186
+-- 6     | 180
+-- 7     | 186
+-- 8     | 186
+-- 9     | 180
+-- 10    | 186
+-- 11    | 180
+-- 12    | 186
+#TODO [the cases of Cook County, Illinois 30 days before 2020-12-31, using date arithmetic and not by typing the date <1pts>]
+SELECT cases
+FROM covid
+WHERE county = 'Cook'
+  AND state = 'Illinois'
+  AND date = DATE '2020-12-31' - 30;
+
+-- cases
+-- 310722
+#TODO [the number of days between the first and the last date of the whole table (you should get 345) <1pts>]
+SELECT MAX(date) - MIN(date) AS days_between
+FROM covid;
+
+-- days_between
+-- 345
+#TODO [the cases of Cook County, Illinois at the end of each month (cases is a running total, so use max), named month and cases_by_month_end, newest month first; show 3 <2pts>]
+-- month      | cases_by_month_end
+-- 2020-12-01 | 393652
+-- 2020-11-01 | 306369
+-- 2020-10-01 | 186405
+#TODO [the number of rows for each day of the week, with the day's number (0 = Sunday) and its name, Sunday first <1pts>]
+-- dow | day | row_count
+-- 0   | Sun | 125919
+-- 1   | Mon | 126279
+-- 2   | Tue | 126792
+-- 3   | Wed | 127307
+-- 4   | Thu | 127802
+-- 5   | Fri | 125087
+-- 6   | Sat | 125551
+```
+
+#TODO [Why would grouping by `extract(month FROM date)` be wrong if the table had data from both 2020 and 2021, and what does `date_trunc` do differently? <1pts>]
+EXTRACT(MONTH FROM date) returns only the month number, so it groups January 2020 and January 2021 together. DATE_TRUNC('month', date) returns the start of the month and preserves the year, so January 2020 and January 2021 go into separate groups.
+
+# Part 11: Indexes
+
+First check that your `lab04` database has no index yet (you made one only in the lecture's `lec04` database):
+
+```sql
+\di
+```
+If you already have an index on `covid`, delete it with `DROP INDEX` and the name that `\di` shows, e.g. for the lecture's index:
+
+```sql
+DROP INDEX covid_state_county_idx;
+\di
+```
+
+Now do these exercises:
+
+```sql
+#TODO [run EXPLAIN ANALYZE on the query "the largest cases of Miami-Dade, Florida over the whole year". Write the plan's scan type and the execution time <1pts>]
+EXPLAIN ANALYZE
+SELECT MAX(cases)
+FROM covid
+WHERE state = 'Florida'
+  AND county = 'Miami-Dade';
+
+-- Scan type: Parallel Seq Scan on covid
+-- Execution Time: 45.289 ms
+#TODO [create an index on (state, county) <1pts>
+CREATE INDEX covid_state_county_idx ON covid (state, county);
+
+-- CREATE INDEX
+#TODO [then run the same EXPLAIN ANALYZE again. <1pts>]
+-- Bitmap Heap Scan on covid
+-- Bitmap Index Scan on covid_state_county_idx
+-- Execution Time: 1.168 ms
+#TODO [Use a query to determine the size of the table alone, of its indexes alone and of both together <1pts>]
+SELECT pg_size_pretty(pg_table_size('covid')) AS table_size,
+       pg_size_pretty(pg_indexes_size('covid')) AS index_size,
+       pg_size_pretty(pg_total_relation_size('covid')) AS total;
+
+-- table_size | index_size | total
+-- 57 MB      | 6344 kB    | 63 MB
+```
+#TODO [After the index was created, what is the new scan type and the execution time? <1pts>]
+PostgreSQL used a Bitmap Index Scan on covid_state_county_idx, followed by a Bitmap Heap Scan on covid. The execution time was 1.168 ms.
+
+#TODO [Miami-Dade has 296 rows out of 884,737. In big-O, how much work is the sequential scan and how much is the index lookup? <1pts>]
+#TODO [What is the downside of having an index? <1pts>]
+
+```sql
+\di
+#TODO [delete the index <1pts>]
+```
+
+# Part 12: B-trees
+
+**This entire part is optional for undergraduates but required for MASTERS students.** No SQL is needed: answer from the "B-trees" section of the lecture. Show your arithmetic.
+
+#TODO [MASTERS ONLY: Our B-tree has 3 levels. How many pages does Postgres read to find the first "Texas, Harris" row? A binary search over the same 884,737 sorted keys would need about how many steps, and why does it matter that each step is a different disk page? <2pts>]
+#TODO [MASTERS ONLY: A signpost page holds about 157 entries, but a leaf page only about 13. Why are leaf entries so much bigger? <1pts>]
+#TODO [MASTERS ONLY: Our root page has only 5 pointers, although it has room for about 225. Why? At what number of leaf pages would the tree need a 4th level? <2pts>]
+#TODO [MASTERS ONLY: Using the lecture's table (about 150 pointers per page and about 1,100 rows per leaf page), how many levels would a table of 10 billion rows need? <1pts>]
+#TODO [MASTERS ONLY: The index on (state, county) takes about 6 MB, but one on (state, county, date) takes about 35 MB, for the same 884,737 rows. Why is the second so much bigger? <1pts>]
+#TODO [MASTERS ONLY: The index is sorted by state first, then county. Can it help the query `WHERE county = 'Harris'` (no state)? What about `WHERE state = 'Texas'` (no county)? Explain using how the leaf pages are ordered <2pts>]
+
+# Part 13: Subqueries
+
+```sql
+#TODO [the date, county, state and deaths of the row(s) with the most deaths in the whole table, using a scalar subquery <1pts>]
+#TODO [the date, county and cases of the row(s) with the most cases in Florida <1pts>]
+#TODO [on 2020-12-31: how many Texas counties had more cases than the average Texas county on that day? (you should get 35 of the 254) <2pts>]
+#TODO [the date, county, state and cases of the row(s) on the first date in the table, using a scalar subquery with min(date) (you should get one row) <1pts>]
+#TODO [on 2020-12-31: the county, state and deaths of the counties with more deaths than Cook County, Illinois on that day, where the subquery finds Cook's deaths (you should get 2) <1pts>]
+\q
+```
+
+# Final checklist
+
+Before you push, check that:
+
+* every `#TODO` has a line afterwards that is filled in with your SQL, the real output, or a written English answer to the question in your own words;
+* there are no `awk` commands in your answers (`awk` is only for reference);
+* the index from Part 11 is deleted (`\di` in `psql lab04` lists no `covid` index);
+* the file renders: `quarto render lab05.qmd` produces an HTML page with no errors (nothing in this lab is executed during rendering).
